@@ -37,7 +37,7 @@ const conditions = [
 
 const schoolRatings = Array.from({ length: 10 }, (_, i) => i + 1);
 
-function HouseParametersForm({ onSubmit, socket, roomId, account }) {
+function HouseParametersForm({ onSubmit, socket, roomId, account, disabled }) {
   const [formData, setFormData] = useState({
     Built_Year: 2000,
     Renovation_Year: 2020,
@@ -152,20 +152,25 @@ function HouseParametersForm({ onSubmit, socket, roomId, account }) {
 
   return (
     <Box
+      as="form"
+      w="100%"
       p={6}
       bg="gray.700"
       borderRadius="lg"
-      border="1px solid"
-      borderColor="blue.400"
-      _hover={{
-        borderColor: 'blue.300',
-        boxShadow: '0 0 10px rgba(66, 153, 225, 0.2)',
-        transition: 'all 0.2s'
-      }}
+      opacity={disabled ? 0.7 : 1}
+      pointerEvents={disabled ? 'none' : 'auto'}
     >
-      <VStack spacing={6} align="stretch">
-        <Heading size="md" color="blue.400">House Parameters</Heading>
-        
+      <VStack spacing={4}>
+        <Heading size="md" color="blue.400" mb={2}>
+          House Parameters
+        </Heading>
+
+        {disabled && (
+          <Text color="green.400" fontSize="md" fontWeight="medium">
+            Consensus reached! No more predictions needed.
+          </Text>
+        )}
+
         <HStack spacing={4}>
           <FormControl>
             <FormLabel>Built Year</FormLabel>
@@ -392,6 +397,7 @@ function HouseParametersForm({ onSubmit, socket, roomId, account }) {
           boxShadow="0 0 15px rgba(66, 153, 225, 0.4)"
           transform="scale(1.05)"
           transition="all 0.2s"
+          isDisabled={disabled}
         >
           Get Price Prediction
         </Button>

@@ -22,6 +22,13 @@ import {
   List,
   ListItem,
   Badge,
+  Link,
+  SimpleGrid,
+  Stat,
+  StatLabel,
+  StatNumber,
+  Icon,
+  useColorModeValue,
 } from '@chakra-ui/react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { 
@@ -32,7 +39,8 @@ import {
   faUsers,
   faDoorOpen,
   faCopy,
-  faPlay
+  faPlay,
+  faExternalLinkAlt,
 } from '@fortawesome/free-solid-svg-icons'
 import { ethers } from 'ethers'
 import { callerABI } from '../contracts/caller'
@@ -57,6 +65,29 @@ const buttonGlow = keyframes`
 
 const CALLER_CONTRACT_ADDRESS = "YOUR_CALLER_CONTRACT_ADDRESS"
 
+// Contract ABI - Add just the deposit function ABI
+const CONTRACT_ABI = [
+  {
+    "inputs": [],
+    "name": "deposit",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  }
+];
+
+const CONTRACT_ADDRESS = "YOUR_CONTRACT_ADDRESS"; // Replace with your actual contract address
+
+const TOKEN_ADDRESS = "0x8D4124Fc1c34DDD7351444567A02BD8526fBe561";
+const VAULT_ADDRESS = "0x0a317E681e4D9d2484ecCaA620c352d65Aa2C603";
+
+const TOKEN_ABI = [
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function balanceOf(address account) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)"
+];
+
 function BusinessRoom({ account }) {
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -74,6 +105,10 @@ function BusinessRoom({ account }) {
   const [currentName, setCurrentName] = useState('')
   const [currentPrediction, setCurrentPrediction] = useState(null);
   const [error, setError] = useState(null);
+  const [predictions, setPredictions] = useState([]);
+  const [consensusReached, setConsensusReached] = useState(false);
+  const [consensusPrice, setConsensusPrice] = useState(null);
+  const [consensusNFT, setConsensusNFT] = useState(null);
 
   // All responsive values at the top level
   const containerPadding = useBreakpointValue({ base: 4, md: 8 })
@@ -90,16 +125,62 @@ function BusinessRoom({ account }) {
   // Initialize socket connection
   useEffect(() => {
     console.log('Initializing socket connection...');
+    console.log('Account:', account);
+
+    // Cleanup any existing socket
+    if (socket) {
+      console.log('Cleaning up existing socket...');
+      socket.disconnect();
+    }
+
     const newSocket = io('http://localhost:3000', {
       transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5,
-      query: { account }
+      timeout: 20000,
+      autoConnect: true,
+      query: { account },
+      forceNew: true
+    });
+
+    // Debug socket state
+    newSocket.on('connecting', () => {
+      console.log('Socket connecting...', {
+        connected: newSocket.connected,
+        disconnected: newSocket.disconnected,
+        transport: newSocket.io?.engine?.transport?.name
+      });
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      console.error('Connection details:', {
+        readyState: newSocket.io?.engine?.readyState,
+        transport: newSocket.io?.engine?.transport?.name,
+        protocol: newSocket.io?.engine?.protocol,
+        error: error.message
+      });
+
+      setIsConnected(false);
+      toast({
+        title: 'Connection Error',
+        description: `Failed to connect to server. Please refresh the page or try again later.`,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
     });
 
     newSocket.on('connect', () => {
       console.log('Socket connected successfully');
+      console.log('Connection details:', {
+        id: newSocket.id,
+        transport: newSocket.io.engine.transport.name,
+        protocol: newSocket.io.engine.protocol
+      });
+
       setIsConnected(true);
       toast({
         title: 'Connected',
@@ -110,26 +191,60 @@ function BusinessRoom({ account }) {
       });
     });
 
-    newSocket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
+    newSocket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
+      console.log('Disconnect details:', {
+        wasConnected: newSocket.connected,
+        reconnecting: newSocket.io?.reconnecting,
+        attempts: newSocket.io?.reconnectionAttempts
+      });
+
       setIsConnected(false);
+      
+      // Show different messages based on disconnect reason
+      const messages = {
+        'io server disconnect': 'Server disconnected. Please refresh the page.',
+        'io client disconnect': 'Disconnected from server.',
+        'transport close': 'Lost connection to server. Attempting to reconnect...',
+        'ping timeout': 'Connection timed out. Attempting to reconnect...'
+      };
+
       toast({
-        title: 'Connection Error',
-        description: 'Failed to connect to server. Please check if the server is running.',
-        status: 'error',
+        title: 'Disconnected',
+        description: messages[reason] || 'Lost connection to server. Attempting to reconnect...',
+        status: 'warning',
         duration: 5000,
         isClosable: true,
       });
     });
 
-    newSocket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
-      setIsConnected(false);
+    // Add reconnect event handlers
+    newSocket.io.on('reconnect', (attempt) => {
+      console.log('Reconnected on attempt:', attempt);
       toast({
-        title: 'Disconnected',
-        description: 'Lost connection to server. Attempting to reconnect...',
-        status: 'warning',
-        duration: 5000,
+        title: 'Reconnected',
+        description: 'Successfully reconnected to server',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+    });
+
+    newSocket.io.on('reconnect_attempt', (attempt) => {
+      console.log('Attempting to reconnect:', attempt);
+    });
+
+    newSocket.io.on('reconnect_error', (error) => {
+      console.error('Reconnection error:', error);
+    });
+
+    newSocket.io.on('reconnect_failed', () => {
+      console.log('Failed to reconnect');
+      toast({
+        title: 'Connection Failed',
+        description: 'Unable to reconnect to server. Please refresh the page.',
+        status: 'error',
+        duration: null,
         isClosable: true,
       });
     });
@@ -220,18 +335,55 @@ function BusinessRoom({ account }) {
       });
     });
 
-    socket.on('predictionMade', ({ prediction, formData, account }) => {
+    socket.on('predictionMade', ({ prediction, formData, account, predictions, hasConsensus }) => {
       console.log('=== PREDICTION MADE EVENT ===');
       console.log('Prediction:', prediction);
       console.log('Form Data:', formData);
       console.log('Account:', account);
+      console.log('All Predictions:', predictions);
+      console.log('Has Consensus:', hasConsensus);
       
       setCurrentPrediction(prediction);
+      setPredictions(predictions);
+      setConsensusReached(hasConsensus);
+      
       toast({
         title: 'New Prediction',
         description: `Price: $${prediction.toLocaleString()}`,
         status: 'info',
         duration: 5000,
+        isClosable: true,
+      });
+    });
+
+    socket.on('consensusReached', ({ room, consensusPrice, nftDetails }) => {
+      console.log('=== CONSENSUS REACHED EVENT ===');
+      console.log('Consensus Price:', consensusPrice);
+      console.log('NFT Details:', nftDetails);
+      
+      setCurrentRoom(room);
+      setConsensusPrice(consensusPrice);
+      setConsensusNFT(nftDetails);
+      setConsensusReached(true);
+      
+      toast({
+        title: 'Consensus Reached! 🎉',
+        description: (
+          <VStack spacing={2} align="start">
+            <Text>Consensus Price: ${consensusPrice.toLocaleString()}</Text>
+            <Text>NFT minted to owner!</Text>
+            <Link
+              href={nftDetails.blockExplorer}
+              isExternal
+              color="blue.400"
+              textDecoration="underline"
+            >
+              View on Etherscan
+            </Link>
+          </VStack>
+        ),
+        status: 'success',
+        duration: 10000,
         isClosable: true,
       });
     });
@@ -249,6 +401,24 @@ function BusinessRoom({ account }) {
       });
     });
 
+    socket.on('propertyPurchased', ({ room, buyer, amount, depositTxHash, transferTxHash }) => {
+      console.log('=== PROPERTY PURCHASED EVENT ===');
+      console.log('Room:', room);
+      console.log('Buyer:', buyer);
+      console.log('Amount:', amount);
+      console.log('Deposit Transaction:', depositTxHash);
+      console.log('Transfer Transaction:', transferTxHash);
+      
+      setCurrentRoom(room);
+      toast({
+        title: 'Property Purchase Complete',
+        description: `Purchase amount: ${amount} DOLLARS\nTransfer to owner successful!`,
+        status: 'success',
+        duration: 7000,
+        isClosable: true,
+      });
+    });
+
     return () => {
       if (socket) {
         socket.off('error');
@@ -258,6 +428,8 @@ function BusinessRoom({ account }) {
         socket.off('participantLeft');
         socket.off('predictionMade');
         socket.off('gameStarted');
+        socket.off('propertyPurchased');
+        socket.off('consensusReached');
       }
     };
   }, [socket, isConnected, toast]);
@@ -361,22 +533,83 @@ function BusinessRoom({ account }) {
     }
   };
 
-  const handleBuyProperty = () => {
-    if (!socket || !isConnected || !currentRoom) return;
+  const handleBuyProperty = async () => {
+    if (!currentPrediction) {
+      toast({
+        title: 'Error',
+        description: 'No prediction available',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
 
-    socket.emit('buyProperty', {
-      roomId: currentRoom.id,
-      account,
-      prediction: currentPrediction
-    });
+    try {
+      setIsDepositing(true);
 
-    toast({
-      title: 'Purchase Initiated',
-      description: 'Your purchase request has been sent',
-      status: 'info',
-      duration: 5000,
-      isClosable: true,
-    });
+      // Get the provider and signer using ethers v6 syntax
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      
+      // Initialize token contract
+      const tokenContract = new ethers.Contract(TOKEN_ADDRESS, TOKEN_ABI, signer);
+      
+      // Convert prediction to token amount (18 decimals)
+      const amount = ethers.parseUnits(currentPrediction.toString(), 18);
+      
+      // Check token balance
+      const balance = await tokenContract.balanceOf(account);
+      if (balance < amount) {
+        throw new Error('Insufficient DOLLARS balance');
+      }
+      
+      // Check and set allowance if needed
+      const allowance = await tokenContract.allowance(account, VAULT_ADDRESS);
+      if (allowance < amount) {
+        console.log('Approving vault to spend tokens...');
+        const approveTx = await tokenContract.approve(VAULT_ADDRESS, amount);
+        await approveTx.wait();
+        console.log('Approval successful');
+      }
+      
+      // Deposit tokens to vault
+      const vaultContract = new ethers.Contract(VAULT_ADDRESS, ["function depositTokens(uint256 amount)"], signer);
+      console.log('Depositing tokens to vault...');
+      const tx = await vaultContract.depositTokens(amount);
+      
+      // Wait for transaction confirmation
+      const receipt = await tx.wait();
+      console.log('Deposit successful:', receipt.hash);
+
+      // Notify server of successful deposit
+      socket.emit('buyProperty', {
+        roomId: currentRoom.id,
+        account,
+        prediction: currentPrediction,
+        transactionHash: receipt.hash
+      });
+
+      toast({
+        title: 'Deposit Successful',
+        description: 'DOLLARS tokens deposited to vault. Waiting for transfer to owner...',
+        status: 'info',
+        duration: 5000,
+        isClosable: true,
+      });
+
+    } catch (error) {
+      console.error('Error in property purchase:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to purchase property',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsDepositing(false);
+    }
   };
 
   const renderParticipantName = (participant) => {
@@ -428,7 +661,7 @@ function BusinessRoom({ account }) {
       <HStack spacing={2}>
         <Text fontSize={participantTextSize} color="white">
           {participant.name || `User ${participant.account.slice(0, 6)}...${participant.account.slice(-4)}`}
-        </Text>
+              </Text>
         {participant.account === account && (
           <Button
             size="xs"
@@ -448,71 +681,94 @@ function BusinessRoom({ account }) {
             Edit
           </Button>
         )}
-      </HStack>
+            </HStack>
     );
   };
 
-  const renderDisclosureScreen = () => (
-    <Container maxW="container.xl" py={containerPadding}>
-      <Box
-        p={8}
-        borderRadius="2xl"
-        bg="gray.800"
-        borderColor="blue.400"
-        border="2px solid"
-        mx="auto"
-        w={boxWidth}
-        css={{
-          boxShadow: '0 0 20px rgba(66, 153, 225, 0.1)',
-          backdropFilter: 'blur(10px)',
-        }}
-      >
-        <VStack spacing={8}>
-          <Heading size={headingSize} color="blue.400" textAlign="center">
-            Welcome to Acroswe Disclosure
-          </Heading>
+  const renderPredictionStats = () => {
+    if (!predictions || predictions.length === 0) return null;
 
-          <Box w="100%" p={6} bg="gray.700" borderRadius="lg">
-            <VStack spacing={4}>
-              <Text color="gray.400" fontSize="lg">Participants</Text>
-              <List spacing={3} w="100%">
-                {participants.map((participant) => (
-                  <ListItem
-                    key={`disclosure-${participant.account}`}
-                    p={3}
-                    bg="gray.800"
-                    borderRadius="md"
-                    border="1px solid"
-                    borderColor="blue.400"
-                  >
-                    <HStack justify="space-between">
-                      <HStack spacing={3}>
-                        <Box
-                          w={3}
-                          h={3}
-                          borderRadius="full"
-                          bg={participant.isOnline ? 'green.400' : 'red.400'}
-                          boxShadow={`0 0 10px ${participant.isOnline ? 'rgba(72, 187, 120, 0.4)' : 'rgba(229, 62, 62, 0.4)'}`}
-                        />
-                        <Text fontSize={participantTextSize} color="white">
-                          {participant.name}
-              </Text>
-                      </HStack>
-                      {participant.account === currentRoom.creator && (
-                        <Badge colorScheme="blue" size={badgeSize}>
-                          Creator
-              </Badge>
-                      )}
-            </HStack>
-          </ListItem>
-        ))}
-      </List>
-            </VStack>
+    const avgPrediction = predictions.reduce((sum, p) => sum + p.prediction, 0) / predictions.length;
+    const minPrediction = Math.min(...predictions.map(p => p.prediction));
+    const maxPrediction = Math.max(...predictions.map(p => p.prediction));
+
+    return (
+      <Box
+        w="100%"
+        p={4}
+        bg="gray.700"
+        borderRadius="lg"
+        border="1px solid"
+        borderColor="blue.400"
+      >
+        <VStack spacing={3}>
+          <Text color="blue.400" fontSize="lg" fontWeight="bold">
+            Prediction Statistics
+          </Text>
+          <SimpleGrid columns={3} spacing={4} w="100%">
+            <Stat>
+              <StatLabel color="gray.400">Average</StatLabel>
+              <StatNumber color="white">${avgPrediction.toLocaleString()}</StatNumber>
+            </Stat>
+            <Stat>
+              <StatLabel color="gray.400">Minimum</StatLabel>
+              <StatNumber color="white">${minPrediction.toLocaleString()}</StatNumber>
+            </Stat>
+            <Stat>
+              <StatLabel color="gray.400">Maximum</StatLabel>
+              <StatNumber color="white">${maxPrediction.toLocaleString()}</StatNumber>
+            </Stat>
+          </SimpleGrid>
+          <Text color="gray.400" fontSize="sm">
+            {predictions.length} prediction{predictions.length !== 1 ? 's' : ''} submitted
+          </Text>
+          {!consensusReached && (
+            <Text color="yellow.400" fontSize="sm">
+              Waiting for consensus (within 10% range)...
+            </Text>
+          )}
+        </VStack>
     </Box>
+    );
+  };
+
+  const renderConsensusInfo = () => {
+    if (!consensusReached || !consensusPrice || !consensusNFT) return null;
+
+    return (
+      <Box
+        w="100%"
+        p={6}
+        bg="green.800"
+        borderRadius="lg"
+        border="2px solid"
+        borderColor="green.400"
+        boxShadow="0 0 20px rgba(72, 187, 120, 0.2)"
+      >
+        <VStack spacing={4}>
+          <Heading size="md" color="green.400">
+            Consensus Reached! 🎉
+          </Heading>
+          <Text color="white" fontSize="2xl" fontWeight="bold">
+            ${consensusPrice.toLocaleString()}
+          </Text>
+          <VStack spacing={2}>
+            <Text color="green.200">
+              NFT minted to room owner
+            </Text>
+            <Link
+              href={consensusNFT.blockExplorer}
+              isExternal
+              color="blue.400"
+              textDecoration="underline"
+            >
+              View on Etherscan <FontAwesomeIcon icon={faExternalLinkAlt} style={{ marginLeft: '2px' }} />
+            </Link>
+          </VStack>
         </VStack>
       </Box>
-      </Container>
-  );
+    );
+  };
 
   const renderRoomInterface = () => {
     console.log('Rendering Room Interface with participants:', participants);
@@ -673,7 +929,11 @@ function BusinessRoom({ account }) {
                     socket={socket}
                     roomId={currentRoom.id}
                     account={account}
+                    disabled={consensusReached}
                   />
+
+                  {renderPredictionStats()}
+                  {renderConsensusInfo()}
 
                   {currentPrediction !== null && (
                     <Box
@@ -725,6 +985,28 @@ function BusinessRoom({ account }) {
 
   const renderGameInterface = () => {
     const isOwner = currentRoom.creator === account;
+    const isBuyer = currentRoom.buyer === account;
+    const isPurchased = currentRoom.propertyPurchased;
+
+    // Convert prediction to DOLLARS (handle the case where currentPrediction is null)
+    const getTokenAmount = () => {
+      try {
+        if (!currentPrediction) return "0";
+        
+        // Convert scientific notation to a regular number first
+        const normalizedValue = Number(currentPrediction).toLocaleString('fullwide', { useGrouping: false });
+        
+        // Round to a reasonable number (e.g., 6 decimal places) to avoid extremely large values
+        const roundedValue = Math.round(parseFloat(normalizedValue) * 1e6) / 1e6;
+        
+        // Convert to token amount with 18 decimals
+        const tokenAmount = ethers.parseUnits(roundedValue.toString(), 18);
+        return ethers.formatUnits(tokenAmount, 18);
+      } catch (error) {
+        console.error('Error converting prediction to DOLLARS:', error);
+        return "0";
+      }
+    };
 
     return (
       <Container maxW="container.xl" py={containerPadding}>
@@ -762,30 +1044,55 @@ function BusinessRoom({ account }) {
               >
                 <VStack spacing={2}>
                   <Text color="green.400" fontSize="lg" fontWeight="bold">
-                    Current Prediction
+                    Required Deposit
                   </Text>
                   <Text color="white" fontSize="2xl">
                     ${currentPrediction.toLocaleString()}
+                  </Text>
+                  <Text color="gray.400" fontSize="sm">
+                    ({getTokenAmount()} DOLLARS)
                   </Text>
                 </VStack>
               </Box>
             )}
 
-            {!isOwner && (
-              <Button
-                colorScheme="green"
-                size="lg"
-                w="100%"
+            {isPurchased ? (
+              <Box p={4} borderRadius="md" bg={useColorModeValue('gray.100', 'gray.700')}>
+                <Heading size="md" mb={2}>
+                  {isOwner ? "Property Sold!" : isBuyer ? "Property Purchased!" : "Property Sale Complete"}
+                </Heading>
+                <Text>
+                  {isOwner ? (
+                    `You sold this property for ${currentPrediction} DOLLARS`
+                  ) : isBuyer ? (
+                    `You purchased this property for ${currentPrediction} DOLLARS`
+                  ) : (
+                    `This property was purchased for ${currentPrediction} DOLLARS`
+                  )}
+                </Text>
+                {(isOwner || isBuyer) && (
+                  <Text mt={2} fontSize="sm" color="gray.500">
+                    Transaction Hash: {currentRoom.transferTxHash}
+                  </Text>
+                )}
+              </Box>
+            ) : (
+                  <Button
+                    colorScheme="green"
+                    size="lg"
+                    w="100%"
                 onClick={handleBuyProperty}
+                isLoading={isDepositing}
+                loadingText="Depositing..."
                 leftIcon={<FontAwesomeIcon icon={faPlay} />}
                 boxShadow="0 0 15px rgba(72, 187, 120, 0.4)"
                 transform="scale(1.05)"
                 transition="all 0.2s"
               >
-                Buy Property
-              </Button>
+                Deposit DOLLARS & Buy Property
+                  </Button>
             )}
-          </VStack>
+                </VStack>
         </Box>
       </Container>
     );
