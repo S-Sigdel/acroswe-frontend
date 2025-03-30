@@ -13,12 +13,8 @@ import {
   faPlusCircle,
   faArrowRight
 } from '@fortawesome/free-solid-svg-icons';
-import { ethers } from 'ethers';
-import { callerABI } from '../contracts/caller';
 
-const CALLER_CONTRACT_ADDRESS = "YOUR_CALLER_CONTRACT_ADDRESS";
-
-function BusinessRoomCreation({ account }) {
+function BusinessRoomCreation({ account, onCreateRoom }) {
   const [isCreatingRoom, setIsCreatingRoom] = React.useState(false);
   const toast = useToast();
 
@@ -29,23 +25,10 @@ function BusinessRoomCreation({ account }) {
   const buttonSize = useBreakpointValue({ base: 'md', md: 'lg' });
   const spacing = useBreakpointValue({ base: 4, md: 6, lg: 8 });
 
-  const createRoom = async () => {
+  const handleCreateRoom = async () => {
     try {
       setIsCreatingRoom(true);
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const contract = new ethers.Contract(CALLER_CONTRACT_ADDRESS, callerABI, signer);
-
-      const tx = await contract.createRoom();
-      await tx.wait();
-
-      toast({
-        title: 'Success',
-        description: 'Room created successfully!',
-        status: 'success',
-        duration: 5000,
-        isClosable: true,
-      });
+      onCreateRoom();
     } catch (error) {
       console.error('Error creating room:', error);
       toast({
@@ -83,7 +66,7 @@ function BusinessRoomCreation({ account }) {
       <Button
         colorScheme="blue"
         size={buttonSize}
-        onClick={createRoom}
+        onClick={handleCreateRoom}
         isLoading={isCreatingRoom}
         loadingText="Creating Room..."
         px={8}

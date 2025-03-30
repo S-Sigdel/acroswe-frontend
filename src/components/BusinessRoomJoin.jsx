@@ -17,12 +17,8 @@ import {
   faHashtag,
   faArrowRight
 } from '@fortawesome/free-solid-svg-icons';
-import { ethers } from 'ethers';
-import { callerABI } from '../contracts/caller';
 
-const CALLER_CONTRACT_ADDRESS = "YOUR_CALLER_CONTRACT_ADDRESS";
-
-function BusinessRoomJoin({ account }) {
+function BusinessRoomJoin({ account, onJoinRoom }) {
   const [roomId, setRoomId] = React.useState('');
   const [isJoiningRoom, setIsJoiningRoom] = React.useState(false);
   const toast = useToast();
@@ -35,11 +31,11 @@ function BusinessRoomJoin({ account }) {
   const inputSize = useBreakpointValue({ base: 'md', md: 'lg' });
   const spacing = useBreakpointValue({ base: 4, md: 6, lg: 8 });
 
-  const joinRoom = async () => {
-    if (!roomId) {
+  const handleJoinRoom = async () => {
+    if (!roomId || !roomId.trim()) {
       toast({
         title: 'Error',
-        description: 'Please enter a room ID',
+        description: 'Please enter a room code',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -49,20 +45,7 @@ function BusinessRoomJoin({ account }) {
 
     try {
       setIsJoiningRoom(true);
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const contract = new ethers.Contract(CALLER_CONTRACT_ADDRESS, callerABI, signer);
-
-      const tx = await contract.joinRoom(roomId);
-      await tx.wait();
-
-      toast({
-        title: 'Success',
-        description: 'Joined room successfully!',
-        status: 'success',
-        duration: 5000,
-        isClosable: true,
-      });
+      onJoinRoom(roomId.trim().toLowerCase());
     } catch (error) {
       console.error('Error joining room:', error);
       toast({
@@ -74,6 +57,12 @@ function BusinessRoomJoin({ account }) {
       });
     } finally {
       setIsJoiningRoom(false);
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      handleJoinRoom();
     }
   };
 
@@ -93,14 +82,14 @@ function BusinessRoomJoin({ account }) {
           Join an existing business room
         </Text>
         <Text fontSize={textSize} color="gray.400" mt={2}>
-          Enter the room ID to join an existing business room
+          Enter the room code to join an existing business room
         </Text>
       </Box>
 
       <FormControl w="100%" maxW="400px">
         <FormLabel color="white" fontSize={textSize}>
           <FontAwesomeIcon icon={faKey} style={{ marginRight: '0.5rem' }} />
-          Room ID
+          Room Code
         </FormLabel>
         <Box position="relative">
           <Box position="absolute" left={3} top="50%" transform="translateY(-50%)" color="gray.400">
@@ -109,13 +98,15 @@ function BusinessRoomJoin({ account }) {
           <Input
             value={roomId}
             onChange={(e) => setRoomId(e.target.value)}
-            placeholder="Enter room ID"
+            onKeyPress={handleKeyPress}
+            placeholder="Enter room code"
             size={inputSize}
             bg="gray.700"
             borderColor="gray.600"
             _hover={{ borderColor: 'green.400' }}
             _focus={{ borderColor: 'green.400' }}
-            color="white"
+            textTransform="uppercase"
+            letterSpacing="0.1em"
             pl={10}
           />
         </Box>
@@ -124,19 +115,16 @@ function BusinessRoomJoin({ account }) {
       <Button
         colorScheme="green"
         size={buttonSize}
-        onClick={joinRoom}
+        onClick={handleJoinRoom}
         isLoading={isJoiningRoom}
-        loadingText="Joining Room..."
-        px={8}
-        _hover={{
-          transform: 'scale(1.05)',
-          transition: 'all 0.2s',
-          boxShadow: '0 0 15px rgba(72, 187, 120, 0.4)'
-        }}
+        leftIcon={<FontAwesomeIcon icon={faArrowRight} />}
+        w="100%"
+        maxW="400px"
+        boxShadow="0 0 15px rgba(72, 187, 120, 0.4)"
+        transform="scale(1.05)"
+        transition="all 0.2s"
       >
-        <FontAwesomeIcon icon={faSignInAlt} style={{ marginRight: '0.5rem' }} />
         Join Room
-        <FontAwesomeIcon icon={faArrowRight} style={{ marginLeft: '0.5rem' }} />
       </Button>
     </VStack>
   );
