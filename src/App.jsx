@@ -1,6 +1,18 @@
 import { useState } from 'react'
-import { ChakraProvider, Box, Flex, Heading, Button, Text, useToast, Container, HStack, VStack } from '@chakra-ui/react'
+import {
+  ChakraProvider,
+  Box,
+  Flex,
+  Heading,
+  Button,
+  Text,
+  Container,
+  HStack,
+  VStack,
+  useToast
+} from '@chakra-ui/react'
 import { ethers } from 'ethers'
+import Dashboard from './components/Dashboard'
 import './App.css'
 
 function App() {
@@ -116,24 +128,28 @@ function App() {
         </Box>
 
         {/* Main Content */}
-        <Container maxW="container.xl" pt={24}>
-          <Box 
-            mt={8} 
-            p={8} 
-            bg="gray.800" 
-            borderRadius="xl" 
-            boxShadow="0 4px 20px rgba(0, 0, 0, 0.2)"
-            border="1px solid"
-            borderColor="gray.700"
-          >
-            <VStack spacing={6}>
-              <Heading size="lg" color="blue.400">Welcome to Acroswe</Heading>
-              <Text color="gray.300" textAlign="center">
-                Connect your wallet to get started with the next generation of decentralized applications.
-              </Text>
-            </VStack>
-          </Box>
-        </Container>
+        {isConnected ? (
+          <Dashboard account={account} />
+        ) : (
+          <Container maxW="container.xl" pt={24}>
+            <Box 
+              mt={8} 
+              p={8} 
+              bg="gray.800" 
+              borderRadius="xl" 
+              boxShadow="0 4px 20px rgba(0, 0, 0, 0.2)"
+              border="1px solid"
+              borderColor="gray.700"
+            >
+              <VStack spacing={6}>
+                <Heading size="lg" color="blue.400">Welcome to Acroswe</Heading>
+                <Text color="gray.300" textAlign="center">
+                  Connect your wallet to get started with the next generation of decentralized applications.
+                </Text>
+              </VStack>
+            </Box>
+          </Container>
+        )}
       </Box>
     </ChakraProvider>
   )
