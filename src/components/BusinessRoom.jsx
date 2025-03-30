@@ -40,6 +40,7 @@ import { keyframes } from '@emotion/react'
 import { io } from 'socket.io-client'
 import BusinessRoomCreation from './BusinessRoomCreation'
 import BusinessRoomJoin from './BusinessRoomJoin'
+import HouseParametersForm from './HouseParametersForm'
 
 // Define glow animation
 const glowKeyframes = keyframes`
@@ -71,6 +72,8 @@ function BusinessRoom({ account }) {
   const [editingName, setEditingName] = useState(false)
   const [newName, setNewName] = useState('')
   const [currentName, setCurrentName] = useState('')
+  const [currentPrediction, setCurrentPrediction] = useState(null);
+  const [error, setError] = useState(null);
 
   // All responsive values at the top level
   const containerPadding = useBreakpointValue({ base: 4, md: 8 })
@@ -88,13 +91,10 @@ function BusinessRoom({ account }) {
   useEffect(() => {
     console.log('Initializing socket connection...');
     const newSocket = io('http://localhost:3000', {
-      transports: ['polling', 'websocket'], // Start with polling, upgrade to websocket
-      reconnection: true,
-      reconnectionAttempts: 5,
+      transports: ['websocket', 'polling'],
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      timeout: 20000,
-      forceNew: true,
+      reconnectionAttempts: 5,
       query: { account }
     });
 
@@ -125,37 +125,10 @@ function BusinessRoom({ account }) {
     newSocket.on('disconnect', (reason) => {
       console.log('Socket disconnected:', reason);
       setIsConnected(false);
-      if (reason === 'io server disconnect') {
-        // Server initiated disconnect, try to reconnect
-        newSocket.connect();
-      }
       toast({
         title: 'Disconnected',
         description: 'Lost connection to server. Attempting to reconnect...',
         status: 'warning',
-        duration: 5000,
-        isClosable: true,
-      });
-    });
-
-    newSocket.on('reconnect', (attemptNumber) => {
-      console.log('Socket reconnected after', attemptNumber, 'attempts');
-      setIsConnected(true);
-      toast({
-        title: 'Reconnected',
-        description: 'Successfully reconnected to server',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      });
-    });
-
-    newSocket.on('reconnect_error', (error) => {
-      console.error('Socket reconnection error:', error);
-      toast({
-        title: 'Reconnection Failed',
-        description: 'Unable to reconnect to server. Please refresh the page.',
-        status: 'error',
         duration: 5000,
         isClosable: true,
       });
@@ -166,25 +139,18 @@ function BusinessRoom({ account }) {
     return () => {
       console.log('Cleaning up socket connection...');
       if (newSocket) {
-        newSocket.removeAllListeners();
         newSocket.disconnect();
       }
     };
   }, [account]);
 
-  // Socket event listeners
+  // Add socket event listeners
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    console.log('=== SOCKET EVENT LISTENERS SETUP ===');
-    console.log('Current account:', account);
-    console.log('Current room state:', currentRoom);
-    console.log('Current participants:', participants);
-
     socket.on('error', ({ message }) => {
-      console.log('Received error:', message);
-      setIsJoiningRoom(false);
-      setIsCreatingRoom(false);
+      console.log('=== ERROR EVENT ===');
+      console.log('Error message:', message);
       toast({
         title: 'Error',
         description: message,
@@ -196,10 +162,10 @@ function BusinessRoom({ account }) {
 
     socket.on('roomCreated', ({ roomId, room }) => {
       console.log('=== ROOM CREATED EVENT ===');
-      console.log('Room data:', room);
       console.log('Room ID:', roomId);
+      console.log('Room:', room);
       setCurrentRoom(room);
-      setParticipants(room.participants || []);
+      setParticipants(room.participants);
       setIsCreatingRoom(false);
       toast({
         title: 'Room Created',
@@ -212,13 +178,13 @@ function BusinessRoom({ account }) {
 
     socket.on('roomJoined', ({ room }) => {
       console.log('=== ROOM JOINED EVENT ===');
-      console.log('Room data:', room);
+      console.log('Room:', room);
       setCurrentRoom(room);
-      setParticipants(room.participants || []);
+      setParticipants(room.participants);
       setIsJoiningRoom(false);
       toast({
-        title: 'Room Joined',
-        description: 'Successfully joined the room',
+        title: 'Joined Room',
+        description: `Room Code: ${room.id.toUpperCase()}`,
         status: 'success',
         duration: 5000,
         isClosable: true,
@@ -227,75 +193,74 @@ function BusinessRoom({ account }) {
 
     socket.on('participantJoined', ({ room }) => {
       console.log('=== PARTICIPANT JOINED EVENT ===');
-      console.log('Room data:', room);
+      console.log('Room:', room);
       setCurrentRoom(room);
-      setParticipants(room.participants || []);
+      setParticipants(room.participants);
       toast({
         title: 'New Participant',
-        description: 'A new participant joined the room',
+        description: 'Someone joined the room',
         status: 'info',
         duration: 3000,
         isClosable: true,
       });
     });
 
-    socket.on('roomUpdated', ({ room }) => {
-      console.log('=== ROOM UPDATED EVENT ===');
-      console.log('Room data:', room);
-      console.log('Current room ID:', currentRoom?.id);
-      console.log('Event room ID:', room.id);
-      
-      if (currentRoom?.id === room.id) {
-        console.log('Updating room state for room update');
-        setCurrentRoom(prev => ({
-          ...prev,
-          ...room,
-          view: prev.view // Preserve the view type
-        }));
-        setParticipants(room.participants || []);
-      }
-    });
-
-    socket.on('participantLeft', ({ room }) => {
-      console.log('Participant Left:', room);
+    socket.on('participantLeft', ({ account, room }) => {
+      console.log('=== PARTICIPANT LEFT EVENT ===');
+      console.log('Account:', account);
+      console.log('Room:', room);
       setCurrentRoom(room);
-      setParticipants(room.participants || []);
+      setParticipants(room.participants);
       toast({
         title: 'Participant Left',
-        description: 'A participant left the room',
+        description: 'Someone left the room',
         status: 'info',
         duration: 3000,
         isClosable: true,
       });
     });
 
-    socket.on('participantUpdated', ({ room }) => {
-      console.log('Participant updated:', room);
-      if (currentRoom && currentRoom.id === room.id) {
-        setCurrentRoom(room);
-        setParticipants(room.participants);
-        setEditingName(false);
-        setNewName('');
-      }
+    socket.on('predictionMade', ({ prediction, formData, account }) => {
+      console.log('=== PREDICTION MADE EVENT ===');
+      console.log('Prediction:', prediction);
+      console.log('Form Data:', formData);
+      console.log('Account:', account);
+      
+      setCurrentPrediction(prediction);
+      toast({
+        title: 'New Prediction',
+        description: `Price: $${prediction.toLocaleString()}`,
+        status: 'info',
+        duration: 5000,
+        isClosable: true,
+      });
     });
 
-    // Add debug logging for state changes
-    console.log('Current Room State:', currentRoom);
-    console.log('Current Participants:', participants);
+    socket.on('gameStarted', ({ room }) => {
+      console.log('=== GAME STARTED EVENT ===');
+      console.log('Room:', room);
+      setCurrentRoom(room);
+      toast({
+        title: 'Disclosure Launched',
+        description: 'The disclosure phase has started',
+        status: 'info',
+        duration: 5000,
+        isClosable: true,
+      });
+    });
 
     return () => {
-      console.log('=== CLEANING UP SOCKET EVENT LISTENERS ===');
       if (socket) {
         socket.off('error');
         socket.off('roomCreated');
         socket.off('roomJoined');
         socket.off('participantJoined');
         socket.off('participantLeft');
-        socket.off('roomUpdated');
+        socket.off('predictionMade');
         socket.off('gameStarted');
       }
     };
-  }, [socket, isConnected, account, toast]);
+  }, [socket, isConnected, toast]);
 
   // Add a debug effect to monitor state changes
   useEffect(() => {
@@ -394,6 +359,24 @@ function BusinessRoom({ account }) {
         account
       });
     }
+  };
+
+  const handleBuyProperty = () => {
+    if (!socket || !isConnected || !currentRoom) return;
+
+    socket.emit('buyProperty', {
+      roomId: currentRoom.id,
+      account,
+      prediction: currentPrediction
+    });
+
+    toast({
+      title: 'Purchase Initiated',
+      description: 'Your purchase request has been sent',
+      status: 'info',
+      duration: 5000,
+      isClosable: true,
+    });
   };
 
   const renderParticipantName = (participant) => {
@@ -513,32 +496,32 @@ function BusinessRoom({ account }) {
                         />
                         <Text fontSize={participantTextSize} color="white">
                           {participant.name}
-                        </Text>
+              </Text>
                       </HStack>
                       {participant.account === currentRoom.creator && (
                         <Badge colorScheme="blue" size={badgeSize}>
                           Creator
-                        </Badge>
+              </Badge>
                       )}
-                    </HStack>
-                  </ListItem>
-                ))}
-              </List>
+            </HStack>
+          </ListItem>
+        ))}
+      </List>
             </VStack>
-          </Box>
+    </Box>
         </VStack>
       </Box>
-    </Container>
+      </Container>
   );
 
   const renderRoomInterface = () => {
     console.log('Rendering Room Interface with participants:', participants);
     const isOwner = currentRoom.creator === account;
-    
-    return (
+
+  return (
       <Container maxW="container.xl" py={containerPadding}>
-        <Box
-          p={8}
+          <Box 
+            p={8} 
           borderRadius="2xl"
           bg="gray.800"
           borderColor="blue.400"
@@ -595,17 +578,17 @@ function BusinessRoom({ account }) {
                     letterSpacing="0.2em"
                     fontWeight="bold"
                     textTransform="uppercase"
-                    bg="gray.800"
+            bg="gray.800" 
                     px={3}
                     py={1}
                     borderRadius="md"
-                    border="1px solid"
+            border="1px solid"
                     borderColor="blue.500"
                     boxShadow="0 0 10px rgba(66, 153, 225, 0.2)"
-                  >
+          >
                     {currentRoom.id.toUpperCase()}
                   </Text>
-                  <Button
+                <Button
                     size="sm"
                     variant="ghost"
                     onClick={copyRoomId}
@@ -617,7 +600,7 @@ function BusinessRoom({ account }) {
                     boxShadow="0 0 10px rgba(66, 153, 225, 0.4)"
                   >
                     Copy
-                  </Button>
+                </Button>
                 </HStack>
               </VStack>
             </Box>
@@ -681,6 +664,44 @@ function BusinessRoom({ account }) {
                 )}
               </List>
 
+              {participants.length >= 2 && !currentRoom.gameStarted && (
+                <>
+                  <HouseParametersForm 
+                    onSubmit={(prediction) => {
+                      setCurrentPrediction(prediction);
+                    }}
+                    socket={socket}
+                    roomId={currentRoom.id}
+                    account={account}
+                  />
+
+                  {currentPrediction !== null && (
+                    <Box
+                      w="100%"
+                      p={4}
+                      bg="gray.700"
+                      borderRadius="lg"
+                      border="1px solid"
+                      borderColor="green.400"
+                      _hover={{
+                        borderColor: 'green.300',
+                        boxShadow: '0 0 10px rgba(72, 187, 120, 0.2)',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      <VStack spacing={2}>
+                        <Text color="green.400" fontSize="lg" fontWeight="bold">
+                          Current Prediction
+                        </Text>
+                        <Text color="white" fontSize="2xl">
+                          ${currentPrediction.toLocaleString()}
+                        </Text>
+                      </VStack>
+                    </Box>
+                  )}
+                </>
+              )}
+
               {isOwner && participants.length >= 2 && !currentRoom.gameStarted && (
                 <Button
                   colorScheme="green"
@@ -696,6 +717,74 @@ function BusinessRoom({ account }) {
                 </Button>
               )}
             </VStack>
+          </VStack>
+        </Box>
+      </Container>
+    );
+  };
+
+  const renderGameInterface = () => {
+    const isOwner = currentRoom.creator === account;
+
+    return (
+      <Container maxW="container.xl" py={containerPadding}>
+        <Box
+          p={8}
+          borderRadius="2xl"
+          bg="gray.800"
+          borderColor="blue.400"
+          border="2px solid"
+          mx="auto"
+          w={boxWidth}
+          css={{
+            boxShadow: '0 0 20px rgba(66, 153, 225, 0.1)',
+            backdropFilter: 'blur(10px)',
+          }}
+        >
+          <VStack spacing={8}>
+            <Heading size={headingSize} color="blue.400" textAlign="center">
+              Property Disclosure Phase
+            </Heading>
+
+            {currentPrediction !== null && (
+              <Box
+                w="100%"
+                p={4}
+                bg="gray.700"
+                borderRadius="lg"
+                border="1px solid"
+                borderColor="green.400"
+                _hover={{
+                  borderColor: 'green.300',
+                  boxShadow: '0 0 10px rgba(72, 187, 120, 0.2)',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <VStack spacing={2}>
+                  <Text color="green.400" fontSize="lg" fontWeight="bold">
+                    Current Prediction
+                  </Text>
+                  <Text color="white" fontSize="2xl">
+                    ${currentPrediction.toLocaleString()}
+                  </Text>
+                </VStack>
+              </Box>
+            )}
+
+            {!isOwner && (
+              <Button
+                colorScheme="green"
+                size="lg"
+                w="100%"
+                onClick={handleBuyProperty}
+                leftIcon={<FontAwesomeIcon icon={faPlay} />}
+                boxShadow="0 0 15px rgba(72, 187, 120, 0.4)"
+                transform="scale(1.05)"
+                transition="all 0.2s"
+              >
+                Buy Property
+              </Button>
+            )}
           </VStack>
         </Box>
       </Container>
@@ -724,17 +813,17 @@ function BusinessRoom({ account }) {
           <Text color="gray.400" textAlign="center">
             Please wait while we connect all participants
           </Text>
-        </VStack>
-      </Box>
+            </VStack>
+          </Box>
     </Container>
   );
 
   const renderDefaultView = () => (
     <Container maxW="container.xl" py={containerPadding}>
-      <Box
-        p={8}
+          <Box 
+            p={8} 
         borderRadius="2xl"
-        bg="gray.800"
+            bg="gray.800" 
         borderColor="blue.400"
         border="2px solid"
         css={{ 
@@ -813,13 +902,13 @@ function BusinessRoom({ account }) {
               </TabPanel>
             </TabPanels>
           </Tabs>
-        </VStack>
-      </Box>
+            </VStack>
+          </Box>
     </Container>
   );
 
   return currentRoom ? (
-    currentRoom.gameStarted ? renderDisclosureScreen() : renderRoomInterface()
+    currentRoom.gameStarted ? renderGameInterface() : renderRoomInterface()
   ) : renderDefaultView();
 }
 

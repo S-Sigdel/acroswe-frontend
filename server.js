@@ -1,5 +1,5 @@
 import express from 'express';
-import http from 'http';
+import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 
@@ -10,8 +10,8 @@ app.use(cors({
   credentials: true
 }));
 
-const server = http.createServer(app);
-const io = new Server(server, {
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"],
@@ -25,18 +25,21 @@ app.get('/', (req, res) => {
   res.send('Server is running');
 });
 
-// Function to generate a random room ID
-function generateRoomId() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let result = '';
-  for (let i = 0; i < 7; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result.toLowerCase();
-}
-
 // Store room data
 const rooms = new Map();
+
+// Store participant sockets
+const participantSockets = new Map();
+
+// Function to generate a random room ID
+const generateRoomId = () => {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < 7; i++) {
+    result += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  return result.toLowerCase();
+};
 
 // Function to dispose of empty rooms
 const disposeRoom = (roomId) => {
@@ -56,6 +59,9 @@ const isValidRoomId = (roomId) => {
 io.on('connection', (socket) => {
   const account = socket.handshake.query.account;
   console.log('User connected:', { socketId: socket.id, account });
+  
+  // Store the socket for this participant
+  participantSockets.set(account, socket);
 
   // Create a new room
   socket.on('createRoom', ({ account }) => {
@@ -73,7 +79,8 @@ io.on('connection', (socket) => {
         isOwner: true
       }],
       gameStarted: false,
-      status: 'waiting'
+      status: 'waiting',
+      lastPrediction: null
     };
     
     rooms.set(roomId, room);
@@ -208,16 +215,66 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Start game
-  socket.on('startGame', (data) => {
-    const { roomId, account } = data;
-    const room = rooms.get(roomId);
+  // Handle game start
+  socket.on('startGame', ({ roomId, account }) => {
+    console.log('=== START GAME EVENT ===');
+    console.log('Room ID:', roomId);
+    console.log('Account:', account);
 
-    if (room && room.creator === account && room.participants.length >= 2) {
-      room.gameStarted = true;
-      rooms.set(roomId, room);
-      io.to(roomId).emit('gameStarted', { room });
+    const room = rooms.get(roomId);
+    if (!room) {
+      console.log('Room not found for game start');
+      return;
     }
+
+    if (room.creator !== account) {
+      console.log('Only creator can start the game');
+      return;
+    }
+
+    // Update room state
+    room.gameStarted = true;
+
+    // Notify all participants
+    room.participants.forEach(participant => {
+      const participantSocket = participantSockets.get(participant.account);
+      if (participantSocket) {
+        participantSocket.emit('gameStarted', { room });
+      }
+    });
+  });
+
+  // Handle buy property
+  socket.on('buyProperty', ({ roomId, account, prediction }) => {
+    console.log('=== BUY PROPERTY EVENT ===');
+    console.log('Room ID:', roomId);
+    console.log('Account:', account);
+    console.log('Prediction:', prediction);
+
+    const room = rooms.get(roomId);
+    if (!room) {
+      console.log('Room not found for buy property');
+      return;
+    }
+
+    // Update room state
+    room.buyRequested = {
+      account,
+      prediction,
+      timestamp: Date.now()
+    };
+
+    // Notify all participants
+    room.participants.forEach(participant => {
+      const participantSocket = participantSockets.get(participant.account);
+      if (participantSocket) {
+        participantSocket.emit('propertyBought', {
+          room,
+          buyer: account,
+          prediction
+        });
+      }
+    });
   });
 
   // Leave room
@@ -261,6 +318,9 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('User disconnected:', { socketId: socket.id, account });
     
+    // Remove the socket from participantSockets
+    participantSockets.delete(account);
+    
     // Find and clean up any rooms this socket was in
     rooms.forEach((room, roomId) => {
       const participantIndex = room.participants.findIndex(p => p.account === account);
@@ -283,9 +343,44 @@ io.on('connection', (socket) => {
       }
     });
   });
+
+  // Handle prediction events
+  socket.on('predictionMade', ({ roomId, account, prediction, formData }) => {
+    console.log('=== PREDICTION MADE EVENT ===');
+    console.log('Room ID:', roomId);
+    console.log('Account:', account);
+    console.log('Prediction:', prediction);
+    console.log('Form Data:', formData);
+
+    const room = rooms.get(roomId);
+    if (!room) {
+      console.log('Room not found for prediction');
+      return;
+    }
+
+    // Update room with prediction
+    room.lastPrediction = {
+      prediction,
+      formData,
+      account,
+      timestamp: Date.now()
+    };
+
+    // Emit to all participants in the room
+    room.participants.forEach(participant => {
+      const participantSocket = participantSockets.get(participant.account);
+      if (participantSocket) {
+        participantSocket.emit('predictionMade', {
+          prediction,
+          formData,
+          account
+        });
+      }
+    });
+  });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 }); 
