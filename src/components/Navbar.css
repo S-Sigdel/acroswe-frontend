@@ -1,0 +1,25 @@
+.navbar-3d {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+}
+
+.logo-container {
+  transform-style: preserve-3d;
+  transition: transform 0.3s ease;
+}
+
+.logo-container:hover {
+  transform: translateZ(40px) rotateX(5deg);
+}
+
+/* Add a subtle parallax effect on scroll */
+@media (min-width: 768px) {
+  .navbar-3d {
+    background: linear-gradient(
+      to bottom,
+      rgba(26, 32, 44, 0.95),
+      rgba(26, 32, 44, 0.98)
+    );
+    backdrop-filter: blur(10px);
+  }
+} 
