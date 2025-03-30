@@ -7,11 +7,32 @@ import {
   HStack,
   Text,
   useToast,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
 } from '@chakra-ui/react'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { 
+  faWallet, 
+  faChevronDown, 
+  faSignOutAlt 
+} from '@fortawesome/free-solid-svg-icons'
 import './Navbar.css'
 
-function Navbar({ account, onConnect }) {
+function Navbar({ account, onConnect, onDisconnect }) {
   const toast = useToast()
+
+  const handleDisconnect = () => {
+    onDisconnect()
+    toast({
+      title: 'Wallet Disconnected',
+      description: 'You have been disconnected from your wallet',
+      status: 'info',
+      duration: 3000,
+      isClosable: true,
+    })
+  }
 
   return (
     <Box 
@@ -24,9 +45,10 @@ function Navbar({ account, onConnect }) {
       zIndex={1000}
       transform="translateZ(20px)"
       className="navbar-3d"
+      h="60px"
     >
-      <Container maxW="container.xl" py={4}>
-        <Flex justify="space-between" align="center">
+      <Container maxW="container.xl" h="100%" py={0}>
+        <Flex justify="space-between" align="center" h="100%">
           <HStack spacing={4}>
             <Box 
               className="logo-container"
@@ -35,7 +57,7 @@ function Navbar({ account, onConnect }) {
             >
               <Heading 
                 as="h1" 
-                size="xl" 
+                size="lg"
                 color="blue.400"
                 textShadow="0 2px 4px rgba(0, 0, 0, 0.3)"
                 letterSpacing="wider"
@@ -49,8 +71,9 @@ function Navbar({ account, onConnect }) {
             {!account ? (
               <Button
                 colorScheme="blue"
-                size="lg"
+                size="md"
                 onClick={onConnect}
+                leftIcon={<FontAwesomeIcon icon={faWallet} />}
                 _hover={{ 
                   bg: 'blue.500',
                   transform: 'translateY(-2px)',
@@ -62,19 +85,36 @@ function Navbar({ account, onConnect }) {
                 Connect Wallet
               </Button>
             ) : (
-              <Box
-                p={4}
-                bg="gray.700"
-                borderRadius="lg"
-                boxShadow="0 4px 12px rgba(0, 0, 0, 0.2)"
-                border="1px solid"
-                borderColor="blue.500"
-              >
-                <Text fontSize="sm" color="gray.300">Connected Account</Text>
-                <Text fontFamily="mono" color="blue.300" fontSize="sm">
-                  {account.slice(0, 6)}...{account.slice(-4)}
-                </Text>
-              </Box>
+              <Menu>
+                <MenuButton
+                  as={Button}
+                  size="md"
+                  variant="outline"
+                  colorScheme="blue"
+                  rightIcon={<FontAwesomeIcon icon={faChevronDown} />}
+                  _hover={{ 
+                    bg: 'blue.500',
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 4px 12px rgba(66, 153, 225, 0.3)'
+                  }}
+                >
+                  <HStack spacing={2}>
+                    <FontAwesomeIcon icon={faWallet} />
+                    <Text fontSize="sm">
+                      {account.slice(0, 6)}...{account.slice(-4)}
+                    </Text>
+                  </HStack>
+                </MenuButton>
+                <MenuList bg="gray.800" borderColor="blue.500">
+                  <MenuItem 
+                    icon={<FontAwesomeIcon icon={faSignOutAlt} />}
+                    onClick={handleDisconnect}
+                    _hover={{ bg: 'gray.700' }}
+                  >
+                    Disconnect Wallet
+                  </MenuItem>
+                </MenuList>
+              </Menu>
             )}
           </Box>
         </Flex>

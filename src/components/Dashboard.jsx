@@ -11,6 +11,8 @@ import {
 } from '@chakra-ui/react'
 import { ethers } from 'ethers'
 import axios from 'axios'
+import { keyframes } from '@emotion/react'
+import BusinessRoom from './BusinessRoom'
 
 const contractAddress = "0x34Bea57E63292729B0Df44F068349a36485ecA88"
 const VERBWIRE_API_KEY = import.meta.env.VITE_VERBWIRE_API_KEY
@@ -26,10 +28,18 @@ const contractABI = [
   }
 ]
 
+// Define the button glow animation
+const buttonGlow = keyframes`
+  0% { box-shadow: 0 0 5px #4299E1; }
+  50% { box-shadow: 0 0 15px #4299E1; }
+  100% { box-shadow: 0 0 5px #4299E1; }
+`
+
 function Dashboard({ account, onAccountChange }) {
   const [hasNFT, setHasNFT] = useState(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [isMinting, setIsMinting] = useState(false)
+  const [showBusinessRoom, setShowBusinessRoom] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
@@ -202,49 +212,57 @@ function Dashboard({ account, onAccountChange }) {
     )
   }
 
+  if (hasNFT && !showBusinessRoom) {
+    return (
+      <Container maxW="container.xl" pt={32}>
+        <VStack spacing={8} align="center">
+          <Heading color="blue.400">NFT Verified!</Heading>
+          <Text color="green.400">You have access to the Business Room</Text>
+          <Button
+            colorScheme="blue"
+            size="lg"
+            onClick={() => setShowBusinessRoom(true)}
+            leftIcon={<i className="fas fa-arrow-right"></i>}
+            css={{
+              animation: `${buttonGlow} 2s infinite`,
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 4px 12px rgba(66, 153, 225, 0.3)'
+              }
+            }}
+          >
+            Enter Business Room
+          </Button>
+        </VStack>
+      </Container>
+    )
+  }
+
+  if (hasNFT && showBusinessRoom) {
+    return <BusinessRoom account={account} />
+  }
+
   return (
     <Container maxW="container.xl" pt={32}>
       <VStack spacing={8} align="center">
-        <Heading color="blue.400">Dashboard</Heading>
-        <Text color="gray.300">Welcome, {account.slice(0, 6)}...{account.slice(-4)}</Text>
-        
-        <Box 
-          p={8} 
-          bg="gray.800" 
-          borderRadius="xl" 
-          boxShadow="0 4px 20px rgba(0, 0, 0, 0.2)"
-          border="1px solid"
-          borderColor="gray.700"
-          w="100%"
-          maxW="md"
+        <Heading color="blue.400">NFT Required</Heading>
+        <Text color="gray.300">You need an NFT to access the Business Room</Text>
+        <Button
+          colorScheme="blue"
+          size="lg"
+          onClick={mintNFT}
+          isLoading={isMinting}
+          loadingText="Minting..."
+          leftIcon={<i className="fas fa-coins"></i>}
+          css={{
+            '&:hover': {
+              transform: 'translateY(-2px)',
+              boxShadow: '0 4px 12px rgba(66, 153, 225, 0.3)'
+            }
+          }}
         >
-          <VStack spacing={6}>
-            <Heading size="md" color="blue.400">NFT Status</Heading>
-            {hasNFT ? (
-              <Text color="green.400">You already own an NFT!</Text>
-            ) : (
-              <>
-                <Text color="gray.300">You don't have an NFT yet.</Text>
-                <Button
-                  colorScheme="blue"
-                  size="lg"
-                  onClick={mintNFT}
-                  isLoading={isMinting}
-                  loadingText="Minting..."
-                  _hover={{ 
-                    bg: 'blue.500',
-                    transform: 'translateY(-2px)',
-                    boxShadow: '0 4px 12px rgba(66, 153, 225, 0.3)'
-                  }}
-                  transition="all 0.2s"
-                  boxShadow="0 4px 12px rgba(66, 153, 225, 0.2)"
-                >
-                  Mint NFT
-                </Button>
-              </>
-            )}
-          </VStack>
-        </Box>
+          Mint NFT
+        </Button>
       </VStack>
     </Container>
   )

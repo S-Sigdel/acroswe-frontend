@@ -67,6 +67,21 @@ function App() {
     }
   }
 
+  const disconnectWallet = async () => {
+    try {
+      // Clear the account state
+      setAccount(null)
+      
+      // If you need to do any cleanup with the provider
+      if (window.ethereum) {
+        // You might want to remove any event listeners here
+        window.ethereum.removeAllListeners()
+      }
+    } catch (error) {
+      console.error('Error disconnecting wallet:', error)
+    }
+  }
+
   const handleAccountChange = (newAccount) => {
     setAccount(newAccount)
   }
@@ -74,16 +89,20 @@ function App() {
   if (isLoading) {
     return (
       <ChakraProvider theme={theme}>
-        <Navbar account={account} onConnect={connectWallet} />
-        <Dashboard account={account} onAccountChange={handleAccountChange} />
+        <Navbar account={account} onConnect={connectWallet} onDisconnect={disconnectWallet} />
+        <Box pt="60px">
+          <Dashboard account={account} onAccountChange={handleAccountChange} />
+        </Box>
       </ChakraProvider>
     )
   }
 
   return (
     <ChakraProvider theme={theme}>
-      <Navbar account={account} onConnect={connectWallet} />
-      <Dashboard account={account} onAccountChange={handleAccountChange} />
+      <Navbar account={account} onConnect={connectWallet} onDisconnect={disconnectWallet} />
+      <Box pt="60px">
+        <Dashboard account={account} onAccountChange={handleAccountChange} />
+      </Box>
     </ChakraProvider>
   )
 }
